@@ -1,0 +1,122 @@
+****THIS IS THE SYNTAX FOR MY ADJUSTED LINEAR REGRESSION*****
+DATASET ACTIVATE DataSet6.
+REGRESSION
+  /DESCRIPTIVES MEAN STDDEV CORR SIG N
+  /MISSING LISTWISE
+  /STATISTICS COEFF OUTS R ANOVA CHANGE SELECTION
+  /CRITERIA=PIN(.05) POUT(.10)
+  /NOORIGIN 
+  /DEPENDENT pain_after
+  /METHOD=ENTER sex age
+  /METHOD=ENTER anxiety cortisol_blood mindfulness pain_cat
+  /SCATTERPLOT=(*ZRESID ,*ZPRED)
+  /RESIDUALS NORMPROB(ZRESID).
+  
+*****THIS IS THE SYNTAX FOR THE BREUSCH-PAGAN ANALYSIS*****
+*****RUN THIS BEFORE YOU EXECUTE THE LAST COMMAND (LAST LINE AT BOTTOM)*******
+
+DEFINE bpktest(!POSITIONAL !TOKENS(1) /!POSITIONAL !TOKENS(1) /!POSITIONAL !CMDEND).
+* Regression to get the residuals and residual plots.
+REGRESSION
+/STATISTICS R ANOVA
+/DEPENDENT !1
+/METHOD=ENTER !3
+/SCATTERPLOT=(*ZRESID,*ZPRED)
+/RESIDUALS HIST(ZRESID) NORM(ZRESID)
+/SAVE RESID(residual) .
+do if $casenum=1.
+print /"Examine the scatter plot of the residuals to detect"
+/"model misspecification and/or heteroscedasticity"
+/""
+/"Also, check the histogram and np plot of residuals "
+/"to detect non normality of residuals "
+/"Skewness and kurtosis more than twice their SE indicate non-normality ".
+end if.
+* Checking normality of residuals.
+DESCRIPTIVES
+VARIABLES=residual
+/STATISTICS=KURTOSIS SKEWNESS .
+* New dependent variable (g) creation.
+COMPUTE sq_res=residual**2.
+compute constant=1.
+AGGREGATE
+/OUTFILE='tempdata.sav'
+/BREAK=constant
+/rss = SUM(sq_res)
+/N=N.
+MATCH FILES /FILE=*
+/FILE='tempdata.sav'.
+EXECUTE.
+if missing(rss) rss=lag(rss,1).
+if missing(n) n=lag(n,1).
+compute g=sq_res/(rss/n).
+execute.
+* BP&K tests.
+* Regression of g on the predictors.
+REGRESSION
+/STATISTICS R ANOVA
+/DEPENDENT g
+/METHOD=ENTER !3
+/SAVE RESID(resid) .
+*Final report.
+do if $casenum=1.
+print /" BP&K TESTS"
+/" ==========".
+end if.
+* Routine adapted from Gwilym Pryce.
+matrix.
+compute p=!2.
+get g /variables=g.
+get resid /variables=resid.
+compute sq_res2=resid&**2.
+compute n=nrow(g).
+compute rss=msum(sq_res2).
+compute ii_1=make(n,n,1).
+compute i=ident(n).
+compute m0=i-((1/n)*ii_1).
+compute tss=transpos(g)*m0*g.
+compute regss=tss-rss.
+print regss
+/format="f8.4"
+/title="Regression SS".
+print rss
+/format="f8.4"
+/title="Residual SS".
+print tss
+/format="f8.4"
+/title="Total SS".
+compute r_sq=1-(rss/tss).
+print r_sq
+/format="f8.4"
+/title="R-squared".
+print n
+/format="f4.0"
+/title="Sample size (N)".
+print p
+/format="f4.0"
+/title="Number of predictors (P)".
+compute bp_test=0.5*regss.
+print bp_test
+/format="f8.3"
+/title="Breusch-Pagan test for Heteroscedasticity"
++ " (CHI-SQUARE df=P)".
+compute sig=1-chicdf(bp_test,p).
+print sig
+/format="f8.4"
+/title="Significance level of Chi-square df=P (H0:"
++ "homoscedasticity)".
+compute k_test=n*r_sq.
+print k_test
+/format="f8.3"
+/title="Koenker test for Heteroscedasticity"
++ " (CHI-SQUARE df=P)".
+compute sig=1-chicdf(k_test,p).
+print sig
+/format="f8.4"
+/title="Significance level of Chi-square df=P (H0:"
++ "homoscedasticity)".
+end matrix.
+!ENDDEFINE.
+
+*****AFTER RUNNING THE ABOVE CODE RUN THE LAST CODE******
+BPKTEST pain_after 6 sex age anxiety pain_cat mindfulness cortisol_blood
